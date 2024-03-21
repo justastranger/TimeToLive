@@ -36,7 +36,7 @@ namespace TimeToLive
     {
 
         [HarmonyTranspiler]
-        [HarmonyPatch("DayUpdate")]
+        [HarmonyPatch("spawnObjects")]
         public static void spawnObjects_Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
         {
             MethodInfo SetSpawnDateMethod = AccessTools.Method(typeof(GameLocationPatch), "SetSpawnDate");
