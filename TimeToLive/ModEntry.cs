@@ -40,9 +40,6 @@ namespace TimeToLive
 
         public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator, MethodBase original)
         {
-            var oldInstructions = new List<CodeInstruction>(instructions);
-            var newInstructions = new List<CodeInstruction>(instructions);
-
             FieldInfo objectsField = AccessTools.Field(typeof(GameLocation), "objects");
             FieldInfo numberOfSpawnedObjectsOnMapField = AccessTools.Field(typeof(GameLocation), "numberOfSpawnedObjectsOnMap");
             MethodInfo CheckForageForRemovalMethod = AccessTools.Method(typeof(DayUpdateForagePatch), "CheckForageForRemoval", new Type[]
@@ -51,90 +48,52 @@ namespace TimeToLive
                 typeof(KeyValuePair<Vector2, StardewValley.Object>)
             });
 
-            for (int i = 0; i < oldInstructions.Count - 1; i++)
+
+            var matcher = new CodeMatcher(instructions, generator);
+            // find start of relevant section of code
+            matcher.MatchStartForward(new CodeMatch(OpCodes.Ldarg_0),
+                                      new CodeMatch(OpCodes.Ldfld, objectsField),
+                                      new CodeMatch(OpCodes.Ldloca_S));
+            // insert a GameLocation reference to the stack
+            matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Ldarg_0));
+            // skip the matched instructions
+            matcher.Advance(3);
+            // Remove the instructions that remove the Object from the set
+            matcher.RemoveInstructions(3);
+            // Insert our detour function, making use of the GameLocation inserted earlier
+            // and the KeyValuePair that we salvaged from the Key retrieval
+            matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Callvirt, CheckForageForRemovalMethod));
+
+            // conditional decrement, skips if a Forage was not removed by previous instruction
+            Label condLabel = generator.DefineLabel();
+            var instructionsToInsert = new List<CodeInstruction>
             {
-                if (oldInstructions[i-2].opcode == OpCodes.Ldarg_0
-                    && oldInstructions[i-1].opcode == OpCodes.Ldfld
-                    && (FieldInfo)oldInstructions[i-1].operand == objectsField
-                    && oldInstructions[i].opcode == OpCodes.Ldloca_S)
-                {
+                // check top of stack for results of Forage removal check
+                new CodeInstruction(OpCodes.Brfalse_S, condLabel),
+                // if removed, reference the instance and retrieve numberOfSpawnedObjectsOnMapField
+                new CodeInstruction(OpCodes.Ldarg_0),
+                new CodeInstruction(OpCodes.Ldfld, numberOfSpawnedObjectsOnMapField),
+                // add a 1 to the stack and subtract it from variable value
+                new CodeInstruction(OpCodes.Ldc_I4_1),
+                new CodeInstruction(OpCodes.Sub),
+                // reference the instance and set variable to the stack's value
+                new CodeInstruction(OpCodes.Ldarg_0),
+                new CodeInstruction(OpCodes.Stfld, numberOfSpawnedObjectsOnMapField),
+                // jump target to keep this segment self-contained
+                new CodeInstruction(OpCodes.Nop)
+            };
+            // bind the jump label to the NOP instruction
+            instructionsToInsert.Last().labels.Add(condLabel);
+            // just insert since we need to go hunting for a different set of instructions now
+            matcher.Insert(instructionsToInsert);
 
-                    // remove the next 3 instructions
-                    newInstructions.RemoveRange(i+1, 3);
-
-                    // insert ldarg_0 at i-2, duplicating the existing one
-
-                    newInstructions.Insert(i-2, new CodeInstruction(OpCodes.Ldarg_0));
-
-                    // increment i manually to account for the shift
-
-                    i++;
-
-                    // insert a callvirt to our detour
-
-                    newInstructions.Insert(i+1, new CodeInstruction(OpCodes.Callvirt, CheckForageForRemovalMethod));
-
-                    // when that returns, we need to add the conditional decrementing
-
-                    Label condLabel = generator.DefineLabel();
-
-                    var instructionsToInsert = new List<CodeInstruction>
-                    {
-                        new CodeInstruction(OpCodes.Brfalse_S, condLabel),
-                        new CodeInstruction(OpCodes.Ldarg_0),
-                        new CodeInstruction(OpCodes.Ldfld, numberOfSpawnedObjectsOnMapField),
-                        new CodeInstruction(OpCodes.Ldc_I4_1),
-                        new CodeInstruction(OpCodes.Sub),
-                        new CodeInstruction(OpCodes.Ldarg_0),
-                        new CodeInstruction(OpCodes.Stfld, numberOfSpawnedObjectsOnMapField),
-                        new CodeInstruction(OpCodes.Nop)
-                    };
-                    instructionsToInsert.Last().labels.Add(condLabel);
-
-                    // insert the above instructions into the spot the removal created
-                    // do not touch anything past i+2 until we get to the next for loop
-                    // because the indexes are all mismatched and we only accounted for the one insertion
-                    newInstructions.InsertRange(i+2, instructionsToInsert);
-
-                    break;
-                }
-                if (i == oldInstructions.Count - 1)
-                {
-                    ModEntry.instance?.Monitor.Log("Transpiler failed to find Forage Removal target.", LogLevel.Error);
-                    return oldInstructions;
-                }
-            }
-
-            int removalIndex = -1;
-            // Time to move past the loop we were modifying
-            // and remove the code that zeroes out numberOfSpawnedObjectsOnMap
-            for (int i = 0; i < newInstructions.Count - 1; i++)
-            {
-                // since modifying an iterable collection is a bad idea mid-iteration
-                // we're just gonna grab the index that we find the instructions at
-                if (newInstructions[i].opcode == OpCodes.Ldarg_0
-                    && newInstructions[i+1].opcode == OpCodes.Ldc_I4_0
-                    && newInstructions[i+2].opcode == OpCodes.Stfld
-                    && (FieldInfo)newInstructions[i+2].operand == numberOfSpawnedObjectsOnMapField)
-                {
-                    removalIndex = i;
-                    break;
-                }
-            }
-            // if we find it
-            if (removalIndex > 0)
-            {
-                // remove the three instructions involved
-                newInstructions.RemoveRange(removalIndex, 3);
-            }
-            else
-            {
-                ModEntry.instance?.Monitor.Log("Transpiler failed to find and remove numberOfSpawnedObjectsOnMap clearing instructions.", LogLevel.Error);
-                return oldInstructions;
-            }
+            matcher.MatchStartForward(new CodeMatch(OpCodes.Ldarg_0),
+                                      new CodeMatch(OpCodes.Ldc_I4_0),
+                                      new CodeMatch(OpCodes.Stfld, numberOfSpawnedObjectsOnMapField));
+            matcher.RemoveInstructions(3);
 
             // all done!
-            return newInstructions;
+            return matcher.InstructionEnumeration();
         }
 
         public static bool CheckForageForRemoval(GameLocation map, KeyValuePair<Vector2, StardewValley.Object> forage)
