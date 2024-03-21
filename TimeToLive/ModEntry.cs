@@ -6,6 +6,8 @@ using StardewValley;
 using System.Reflection.Emit;
 using System.Reflection;
 using Microsoft.Xna.Framework;
+using System.Reflection.Metadata.Ecma335;
+using StardewModdingAPI.Utilities;
 
 namespace TimeToLive
 {
@@ -29,20 +31,43 @@ namespace TimeToLive
         }
     }
 
-    [HarmonyPatch(typeof(GameLocation), "DayUpdate", new Type[]
-    {
-        typeof(int)
-    })]
-    public static class DayUpdateForagePatch
+    [HarmonyPatch(typeof(GameLocation))]
+    public static class GameLocationPatch
     {
 
+        [HarmonyTranspiler]
+        [HarmonyPatch("DayUpdate")]
+        public static void spawnObjects_Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
+        {
+            MethodInfo SetSpawnDateMethod = AccessTools.Method(typeof(GameLocationPatch), "SetSpawnDate");
+            var matcher = new CodeMatcher(instructions, generator);
 
+            // forageObj.IsSpawnedObject = true;
+            matcher.MatchStartForward(new CodeMatch(OpCodes.Ldloc_S, 18),
+                                      new CodeMatch(OpCodes.Ldc_I4_1),
+                                      new CodeMatch(OpCodes.Callvirt, AccessTools.PropertySetter(typeof(StardewValley.Object), "IsSpawnedObject")));
+            // ldloc   18
+            // callvirt  instance void GameLocationPatch::SetSpawnDate(StardewValley.Object)
+            matcher.Insert(new CodeInstruction(OpCodes.Ldloca_S, (short)18),
+                           new CodeInstruction(OpCodes.Callvirt, SetSpawnDateMethod));
 
-        public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator, MethodBase original)
+        }
+
+        public static void SetSpawnDate(StardewValley.Object forage)
+        {
+            forage.modData[ModEntry.ForageSpawnDateKey] = WorldDate.Now().TotalDays.ToString();
+        }
+
+        [HarmonyTranspiler]
+        [HarmonyPatch("DayUpdate", new Type[]
+        {
+            typeof(int)
+        })]
+        public static IEnumerable<CodeInstruction> DayUpdate_Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
         {
             FieldInfo objectsField = AccessTools.Field(typeof(GameLocation), "objects");
             FieldInfo numberOfSpawnedObjectsOnMapField = AccessTools.Field(typeof(GameLocation), "numberOfSpawnedObjectsOnMap");
-            MethodInfo CheckForageForRemovalMethod = AccessTools.Method(typeof(DayUpdateForagePatch), "CheckForageForRemoval", new Type[]
+            MethodInfo CheckForageForRemovalMethod = AccessTools.Method(typeof(GameLocationPatch), "CheckForageForRemoval", new Type[]
             {
                 typeof(GameLocation),
                 typeof(KeyValuePair<Vector2, StardewValley.Object>)
@@ -89,8 +114,7 @@ namespace TimeToLive
 
             matcher.MatchStartForward(new CodeMatch(OpCodes.Ldarg_0),
                                       new CodeMatch(OpCodes.Ldc_I4_0),
-                                      new CodeMatch(OpCodes.Stfld, numberOfSpawnedObjectsOnMapField));
-            matcher.RemoveInstructions(3);
+                                      new CodeMatch(OpCodes.Stfld, numberOfSpawnedObjectsOnMapField)).RemoveInstructions(3);
 
             // all done!
             return matcher.InstructionEnumeration();
