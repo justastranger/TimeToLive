@@ -11,10 +11,12 @@ namespace TimeToLive
 {
     public class ModEntry : Mod
     {
-        internal Config config;
+        internal Config? config;
         internal ITranslationHelper i18n => Helper.Translation;
 
-        internal static ModEntry instance;
+        internal static ModEntry? instance;
+
+        internal static string? ForageSpawnDateKey;
 
         public override void Entry(IModHelper helper)
         {
@@ -23,6 +25,7 @@ namespace TimeToLive
 
             config = helper.ReadConfig<Config>();
             instance = this;
+            ForageSpawnDateKey = $"{instance.ModManifest.UniqueID}/ForageSpawnDate";
         }
     }
 
@@ -97,7 +100,7 @@ namespace TimeToLive
                 }
                 if (i == oldInstructions.Count - 1)
                 {
-                    ModEntry.instance.Monitor.Log("Transpiler failed to find Forage Removal target.", LogLevel.Error);
+                    ModEntry.instance?.Monitor.Log("Transpiler failed to find Forage Removal target.", LogLevel.Error);
                     return oldInstructions;
                 }
             }
@@ -107,6 +110,8 @@ namespace TimeToLive
             // and remove the code that zeroes out numberOfSpawnedObjectsOnMap
             for (int i = 0; i < newInstructions.Count - 1; i++)
             {
+                // since modifying an iterable collection is a bad idea mid-iteration
+                // we're just gonna grab the index that we find the instructions at
                 if (newInstructions[i].opcode == OpCodes.Ldarg_0
                     && newInstructions[i+1].opcode == OpCodes.Ldc_I4_0
                     && newInstructions[i+2].opcode == OpCodes.Stfld
@@ -116,36 +121,40 @@ namespace TimeToLive
                     break;
                 }
             }
+            // if we find it
             if (removalIndex > 0)
             {
+                // remove the three instructions involved
                 newInstructions.RemoveRange(removalIndex, 3);
             }
             else
             {
-                ModEntry.instance.Monitor.Log("Transpiler failed to find and remove numberOfSpawnedObjectsOnMap clearing instructions.", LogLevel.Error);
+                ModEntry.instance?.Monitor.Log("Transpiler failed to find and remove numberOfSpawnedObjectsOnMap clearing instructions.", LogLevel.Error);
                 return oldInstructions;
             }
 
+            // all done!
             return newInstructions;
         }
 
         public static bool CheckForageForRemoval(GameLocation map, KeyValuePair<Vector2, StardewValley.Object> forage)
         {
+            // we can store and retrieve custom data from here, it just needs to be serializable
+            // in this case, we're using a simple int
             var objectModData = forage.Value.modData;
-            if (objectModData != null && objectModData[$"{ModEntry.instance.ModManifest.UniqueID}/ForageSpawnDate"] != null)
+            int lifespan = ModEntry.instance?.config?.lifespan != null ? ModEntry.instance.config.lifespan : 7;
+            if (objectModData != null && objectModData[ModEntry.ForageSpawnDateKey] != null)
             {
                 int currentTotalDays = WorldDate.Now().TotalDays;
-                string spawnTotalDays = objectModData[$"{ModEntry.instance.ModManifest.UniqueID}/ForageSpawnDate"];
-                int daysOld = currentTotalDays - int.Parse(spawnTotalDays);
-                if (daysOld > 7)
+                int spawnTotalDays = int.Parse(objectModData[ModEntry.ForageSpawnDateKey]);
+
+                // Simple math, just checking if enough time has passed for the forage to "decay"
+                if ((currentTotalDays - spawnTotalDays) > lifespan)
                 {
                     map.objects.Remove(forage.Key);
                     return true;
                 }
-                else
-                {
-                    return false;
-                }
+                else return false;
             }
             else
             {
