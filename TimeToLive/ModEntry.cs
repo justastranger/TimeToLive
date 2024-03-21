@@ -43,12 +43,12 @@ namespace TimeToLive
             var matcher = new CodeMatcher(instructions, generator);
 
             // forageObj.IsSpawnedObject = true;
-            matcher.MatchStartForward(new CodeMatch(OpCodes.Ldloc_S, 18),
+            matcher.MatchStartForward(new CodeMatch(OpCodes.Ldloc_S, (short)18),
                                       new CodeMatch(OpCodes.Ldc_I4_1),
                                       new CodeMatch(OpCodes.Callvirt, AccessTools.PropertySetter(typeof(StardewValley.Object), "IsSpawnedObject")));
             // ldloc   18
             // callvirt  instance void GameLocationPatch::SetSpawnDate(StardewValley.Object)
-            matcher.Insert(new CodeInstruction(OpCodes.Ldloca_S, (short)18),
+            matcher.Insert(new CodeInstruction(OpCodes.Ldloc_S, (short)18),
                            new CodeInstruction(OpCodes.Callvirt, SetSpawnDateMethod));
 
         }
