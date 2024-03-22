@@ -1,10 +1,10 @@
 ﻿{
-  "Name": "TimeToLive",
-  "Author": "justastranger",
-  "Version": "0.0.0",
-  "Description": "Forage now has a spawn date and only despawns after some time has elapsed.",
-  "UniqueID": "JAS.TimeToLive",
-  "EntryDll": "TimeToLive.dll",
-  "MinimumApiVersion": "4.0.0",
-  "UpdateKeys": [ "Moddrop:" ]
+    "Name": "TimeToLive",
+    "Author": "justastranger",
+    "Version": "0.0.1",
+    "Description": "Forage now has a spawn date and only despawns after some time has elapsed.",
+    "UniqueID": "JAS.TimeToLive",
+    "EntryDll": "TimeToLive.dll",
+    "MinimumApiVersion": "4.0.0",
+    "UpdateKeys": [ "GitHub:justastranger/TimeToLive" ]
 }
