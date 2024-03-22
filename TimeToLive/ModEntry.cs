@@ -37,7 +37,7 @@ namespace TimeToLive
 
         [HarmonyTranspiler]
         [HarmonyPatch("spawnObjects")]
-        public static void spawnObjects_Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
+        public static IEnumerable<CodeInstruction> spawnObjects_Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
         {
             MethodInfo SetSpawnDateMethod = AccessTools.Method(typeof(GameLocationPatch), "SetSpawnDate");
             var matcher = new CodeMatcher(instructions, generator);
@@ -46,11 +46,14 @@ namespace TimeToLive
             matcher.MatchStartForward(new CodeMatch(OpCodes.Ldloc_S, (short)18),
                                       new CodeMatch(OpCodes.Ldc_I4_1),
                                       new CodeMatch(OpCodes.Callvirt, AccessTools.PropertySetter(typeof(StardewValley.Object), "IsSpawnedObject")));
+
+            if (matcher.IsInvalid) return instructions;
+
             // ldloc   18
             // callvirt  instance void GameLocationPatch::SetSpawnDate(StardewValley.Object)
-            matcher.Insert(new CodeInstruction(OpCodes.Ldloc_S, (short)18),
+            matcher.Insert(new CodeInstruction(OpCodes.Ldloc_S, matcher.Instruction.operand),
                            new CodeInstruction(OpCodes.Callvirt, SetSpawnDateMethod));
-
+            return matcher.InstructionEnumeration();
         }
 
         public static void SetSpawnDate(StardewValley.Object forage)
