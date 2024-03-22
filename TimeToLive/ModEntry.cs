@@ -22,7 +22,7 @@ namespace TimeToLive
 
         public override void Entry(IModHelper helper)
         {
-            string startingMessage = i18n.Get("TimeToLive.start", new { mod = helper.ModRegistry.ModID, folder = helper.DirectoryPath });
+            string startingMessage = i18n.Get("TimeToLive.start");
             Monitor.Log(startingMessage, LogLevel.Trace);
 
             config = helper.ReadConfig<Config>();
@@ -56,6 +56,7 @@ namespace TimeToLive
         public static void SetSpawnDate(StardewValley.Object forage)
         {
             forage.modData[ModEntry.ForageSpawnDateKey] = WorldDate.Now().TotalDays.ToString();
+            ModEntry.instance?.Monitor.Log($"Assigned current date to spawned {forage.DisplayName}.", ModEntry.instance.config.loggingLevel);
         }
 
         [HarmonyTranspiler]
@@ -122,6 +123,8 @@ namespace TimeToLive
 
         public static bool CheckForageForRemoval(GameLocation map, KeyValuePair<Vector2, StardewValley.Object> forage)
         {
+            ModEntry.instance?.Monitor.Log($"Checking {forage.Value.DisplayName} for spawn date.", ModEntry.instance.config.loggingLevel);
+
             // we can store and retrieve custom data from here, it just needs to be serializable
             // in this case, we're using a simple int
             var objectModData = forage.Value.modData;
@@ -134,13 +137,20 @@ namespace TimeToLive
                 // Simple math, just checking if enough time has passed for the forage to "decay"
                 if ((currentTotalDays - spawnTotalDays) > lifespan)
                 {
+                    ModEntry.instance?.Monitor.Log($"Despawning {forage.Value.DisplayName} due to age.", ModEntry.instance.config.loggingLevel);
                     map.objects.Remove(forage.Key);
                     return true;
                 }
-                else return false;
+                else
+                {
+                    ModEntry.instance?.Monitor.Log($"Skipping {forage.Value.DisplayName} as it has {(currentTotalDays - spawnTotalDays)} days left.", ModEntry.instance.config.loggingLevel);
+                    return false;
+                }
             }
+            // if ModData == null or ModData[ModEntry.ForageSpawnDateKey] == null
             else
             {
+                ModEntry.instance?.Monitor.Log($"Despawning {forage.Value.DisplayName} as it either has no ModData or spawn date.", ModEntry.instance.config.loggingLevel);
                 map.objects.Remove(forage.Key);
                 return true;
             }
