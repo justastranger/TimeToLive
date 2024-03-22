@@ -8,6 +8,7 @@ using System.Reflection;
 using Microsoft.Xna.Framework;
 using System.Reflection.Metadata.Ecma335;
 using StardewModdingAPI.Utilities;
+using StardewValley.Network;
 
 namespace TimeToLive
 {
@@ -59,6 +60,7 @@ namespace TimeToLive
     public static class GameLocationPatch
     {
 
+        // hopefully obsolete, haven't been able to test it whilst transfixed by the eldritch error
         //[HarmonyTranspiler]
         //[HarmonyPatch(typeof(GameLocation), nameof(GameLocation.spawnObjects))]
         //public static IEnumerable<CodeInstruction> spawnObjects_Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
@@ -107,10 +109,33 @@ namespace TimeToLive
 
             
             var matcher = new CodeMatcher(instructions, generator);
+            // temp code dump
+            List<KeyValuePair<string, string?>> insns = new();
+            foreach (CodeInstruction pair in matcher.InstructionEnumeration())
+            {
+                insns.Add(new(pair.opcode.Name, pair.operand != null ? pair.operand.GetType() + ": " + pair.operand.ToString() : ""));
+            }
+            ModEntry.instance.Monitor.Log(Newtonsoft.Json.JsonConvert.SerializeObject(insns));
+
+            CodeMatch[] targetCode = new CodeMatch[] {
+                new(OpCodes.Ldarg_0),
+                new(OpCodes.Ldfld, objectsField),
+                new(OpCodes.Ldloca_S)
+            };
             // find start of relevant section of code
-            matcher.MatchStartForward(new CodeMatch(OpCodes.Ldarg_0),
-                                      new CodeMatch(OpCodes.Ldfld, objectsField),
-                                      new CodeMatch(OpCodes.Ldloca_S));
+            matcher.MatchStartForward(targetCode);
+            ModEntry.instance.Monitor.Log("Match 1 made at index: " + matcher.Pos);
+            // twice because there's two copies of this particular fragment in wildly different spots and refining doesn't work
+            matcher.Advance(1).MatchStartForward(targetCode);
+            ModEntry.instance.Monitor.Log("Match 2 made at index: " + matcher.Pos);
+
+
+            if (matcher.IsInvalid)
+            {
+                ModEntry.instance.Monitor.Log("Patching GameLocation.spawnObjects failed.");
+                return instructions;
+            }
+
             // insert a GameLocation reference to the stack
             matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Ldarg_0));
             // skip the matched instructions
@@ -119,14 +144,9 @@ namespace TimeToLive
             matcher.RemoveInstructions(3);
             // Insert our detour function, making use of the GameLocation inserted earlier
             // and the KeyValuePair that we salvaged from the Key retrieval
+            // matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Call, CheckForageForRemovalMethod));
             // matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Callvirt, CheckForageForRemovalMethod));
-            matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Call, CheckForageForRemovalMethod));
-
-            if (matcher.IsInvalid)
-            {
-                ModEntry.instance.Monitor.Log("Patching GameLocation.spawnObjects failed.");
-                return instructions;
-            }
+            matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Call, typeof(GameLocationPatch).GetMethod(nameof(GameLocationPatch.CheckForageForRemoval), BindingFlags.Static | BindingFlags.Public)));
 
             // conditional decrement, skips if a Forage was not removed by previous instruction
             Label condLabel = generator.DefineLabel();
@@ -151,9 +171,10 @@ namespace TimeToLive
             // just insert since we need to go hunting for a different set of instructions now
             matcher.Insert(instructionsToInsert);
 
-            matcher.MatchStartForward(new CodeMatch(OpCodes.Ldarg_0),
-                                      new CodeMatch(OpCodes.Ldc_I4_0),
-                                      new CodeMatch(OpCodes.Stfld, numberOfSpawnedObjectsOnMapField)).RemoveInstructions(3);
+            // being able to chain this makes it cleaner, though my urge to line up arguments split across lines doesn't help at all
+            matcher.MatchStartForward(new (OpCodes.Ldarg_0),
+                                      new (OpCodes.Ldc_I4_0),
+                                      new (OpCodes.Stfld, numberOfSpawnedObjectsOnMapField)).RemoveInstructions(3);
 
             if (matcher.IsInvalid)
             {
@@ -162,7 +183,15 @@ namespace TimeToLive
             }
 
             // all done!
-            ModEntry.instance.Monitor.Log("Patched GameLocation.DayUpdate");
+            ModEntry.instance.Monitor.Log("Patched GameLocation.DayUpdate, dumping new instructions.");
+
+            insns = new();
+            foreach (CodeInstruction pair in matcher.InstructionEnumeration())
+            {
+                insns.Add(new(pair.opcode.Name, pair.operand != null ? pair.operand.GetType() + ": " + pair.operand.ToString() : ""));
+            }
+            ModEntry.instance.Monitor.Log(Newtonsoft.Json.JsonConvert.SerializeObject(insns));
+
             return matcher.InstructionEnumeration();
         }
 
