@@ -13,12 +13,13 @@ namespace TimeToLive
 {
     public class ModEntry : Mod
     {
-        internal Config? config;
+        internal Config config;
         internal ITranslationHelper i18n => Helper.Translation;
 
-        internal static ModEntry? instance;
+        internal static ModEntry instance;
 
-        internal static string? ForageSpawnDateKey;
+        internal static string ForageSpawnDateKey;
+        internal static Harmony harmony;
 
         public override void Entry(IModHelper helper)
         {
@@ -28,6 +29,29 @@ namespace TimeToLive
             config = helper.ReadConfig<Config>();
             instance = this;
             ForageSpawnDateKey = $"{instance.ModManifest.UniqueID}/ForageSpawnDate";
+            harmony = new Harmony(ModManifest.UniqueID);
+            harmony.PatchAll();
+            // ObjectListChanged
+            helper.Events.World.ObjectListChanged += OnObjectListChanged;
+        }
+
+        public void OnObjectListChanged(object? sender, ObjectListChangedEventArgs e)
+        {
+            // GameLocation e.Location
+            // IEnumerable<KeyValuePair<Vector2, Object>> e.Added
+
+            if (e.Added != null)
+            {
+                foreach (KeyValuePair<Vector2, StardewValley.Object> kvp in e.Added)
+                {
+                    if (kvp.Value.isForage())
+                    {
+                        kvp.Value.modData[ForageSpawnDateKey] = WorldDate.Now().TotalDays.ToString();
+                        instance.Monitor.Log($"Assigned current date to spawned {kvp.Value.DisplayName}.");
+                    }
+                }
+            }
+
         }
     }
 
@@ -35,49 +59,53 @@ namespace TimeToLive
     public static class GameLocationPatch
     {
 
+        //[HarmonyTranspiler]
+        //[HarmonyPatch(typeof(GameLocation), nameof(GameLocation.spawnObjects))]
+        //public static IEnumerable<CodeInstruction> spawnObjects_Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
+        //{
+        //    ModEntry.instance.Monitor.Log("Patching GameLocation.spawnObjects");
+        //    MethodInfo SetSpawnDateMethod = AccessTools.Method(typeof(GameLocationPatch), nameof(GameLocationPatch.SetSpawnDate));
+        //    var matcher = new CodeMatcher(instructions, generator);
+
+        //    // forageObj.IsSpawnedObject = true;
+        //    matcher.MatchStartForward(new CodeMatch(OpCodes.Ldloc_S),
+        //                              new CodeMatch(OpCodes.Ldc_I4_1),
+        //                              new CodeMatch(OpCodes.Callvirt, AccessTools.PropertySetter(typeof(StardewValley.Object), nameof(StardewValley.Object.IsSpawnedObject))));
+
+        //    if (matcher.IsInvalid)
+        //    {
+        //        ModEntry.instance.Monitor.Log("Patching GameLocation.spawnObjects failed.");
+        //        return instructions;
+        //    }
+
+        //    // Since the matcher is pointed at the first instruction that references the local variable we want
+        //    // We're able to directly use the value of the instruction's operand to duplicate the reference
+        //    // and then pass that to our code so that we can attach our data to it
+        //    matcher.Insert(new CodeInstruction(OpCodes.Ldloc_S, matcher.Instruction.operand),
+        //                   new CodeInstruction(OpCodes.Call, SetSpawnDateMethod));
+        //    ModEntry.instance.Monitor.Log("Patched GameLocation.spawnObjects");
+        //    return matcher.InstructionEnumeration();
+        //}
+
+        //public static void SetSpawnDate(StardewValley.Object forage)
+        //{
+        //    forage.modData[ModEntry.ForageSpawnDateKey] = WorldDate.Now().TotalDays.ToString();
+        //    ModEntry.instance.Monitor.Log($"Assigned current date to spawned {forage.DisplayName}.");
+        //}
+
         [HarmonyTranspiler]
-        [HarmonyPatch(nameof(GameLocation.spawnObjects))]
-        public static IEnumerable<CodeInstruction> spawnObjects_Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
-        {
-            MethodInfo SetSpawnDateMethod = AccessTools.Method(typeof(GameLocationPatch), nameof(GameLocationPatch.SetSpawnDate));
-            var matcher = new CodeMatcher(instructions, generator);
-
-            // forageObj.IsSpawnedObject = true;
-            matcher.MatchStartForward(new CodeMatch(OpCodes.Ldloc_S, (short)18),
-                                      new CodeMatch(OpCodes.Ldc_I4_1),
-                                      new CodeMatch(OpCodes.Callvirt, AccessTools.PropertySetter(typeof(StardewValley.Object), nameof(StardewValley.Object.IsSpawnedObject))));
-
-            if (matcher.IsInvalid) return instructions;
-
-            // ldloc   18
-            // callvirt  instance void GameLocationPatch::SetSpawnDate(StardewValley.Object)
-            matcher.Insert(new CodeInstruction(OpCodes.Ldloc_S, matcher.Instruction.operand),
-                           new CodeInstruction(OpCodes.Callvirt, SetSpawnDateMethod));
-            return matcher.InstructionEnumeration();
-        }
-
-        public static void SetSpawnDate(StardewValley.Object forage)
-        {
-            forage.modData[ModEntry.ForageSpawnDateKey] = WorldDate.Now().TotalDays.ToString();
-            ModEntry.instance?.Monitor.Log($"Assigned current date to spawned {forage.DisplayName}.", ModEntry.instance.config.loggingLevel);
-        }
-
-        [HarmonyTranspiler]
-        [HarmonyPatch(nameof(GameLocation.DayUpdate), new Type[]
+        [HarmonyPatch(typeof(GameLocation), nameof(GameLocation.DayUpdate), new Type[]
         {
             typeof(int)
         })]
         public static IEnumerable<CodeInstruction> DayUpdate_Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
         {
+            ModEntry.instance.Monitor.Log("Patching GameLocation.DayUpdate");
             FieldInfo objectsField = AccessTools.Field(typeof(GameLocation), nameof(GameLocation.objects));
             FieldInfo numberOfSpawnedObjectsOnMapField = AccessTools.Field(typeof(GameLocation), nameof(GameLocation.numberOfSpawnedObjectsOnMap));
-            MethodInfo CheckForageForRemovalMethod = AccessTools.Method(typeof(GameLocationPatch), nameof(GameLocationPatch.CheckForageForRemoval), new Type[]
-            {
-                typeof(GameLocation),
-                typeof(KeyValuePair<Vector2, StardewValley.Object>)
-            });
+            MethodInfo CheckForageForRemovalMethod = AccessTools.Method(typeof(GameLocationPatch), nameof(GameLocationPatch.CheckForageForRemoval));
 
-
+            
             var matcher = new CodeMatcher(instructions, generator);
             // find start of relevant section of code
             matcher.MatchStartForward(new CodeMatch(OpCodes.Ldarg_0),
@@ -91,7 +119,14 @@ namespace TimeToLive
             matcher.RemoveInstructions(3);
             // Insert our detour function, making use of the GameLocation inserted earlier
             // and the KeyValuePair that we salvaged from the Key retrieval
-            matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Callvirt, CheckForageForRemovalMethod));
+            // matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Callvirt, CheckForageForRemovalMethod));
+            matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Call, CheckForageForRemovalMethod));
+
+            if (matcher.IsInvalid)
+            {
+                ModEntry.instance.Monitor.Log("Patching GameLocation.spawnObjects failed.");
+                return instructions;
+            }
 
             // conditional decrement, skips if a Forage was not removed by previous instruction
             Label condLabel = generator.DefineLabel();
@@ -120,18 +155,25 @@ namespace TimeToLive
                                       new CodeMatch(OpCodes.Ldc_I4_0),
                                       new CodeMatch(OpCodes.Stfld, numberOfSpawnedObjectsOnMapField)).RemoveInstructions(3);
 
+            if (matcher.IsInvalid)
+            {
+                ModEntry.instance.Monitor.Log("Patching GameLocation.spawnObjects failed.");
+                return instructions;
+            }
+
             // all done!
+            ModEntry.instance.Monitor.Log("Patched GameLocation.DayUpdate");
             return matcher.InstructionEnumeration();
         }
 
         public static bool CheckForageForRemoval(GameLocation map, KeyValuePair<Vector2, StardewValley.Object> forage)
         {
-            ModEntry.instance?.Monitor.Log($"Checking {forage.Value.DisplayName} for spawn date.", ModEntry.instance.config.loggingLevel);
+            ModEntry.instance.Monitor.Log($"Checking {forage.Value.DisplayName} for spawn date.");
 
             // we can store and retrieve custom data from here, it just needs to be serializable
             // in this case, we're using a simple int
             var objectModData = forage.Value.modData;
-            int lifespan = ModEntry.instance?.config?.lifespan != null ? ModEntry.instance.config.lifespan : 7;
+            int lifespan = ModEntry.instance.config.lifespan != null ? ModEntry.instance.config.lifespan : 7;
             if (objectModData != null && objectModData[ModEntry.ForageSpawnDateKey] != null)
             {
                 int currentTotalDays = WorldDate.Now().TotalDays;
@@ -140,20 +182,20 @@ namespace TimeToLive
                 // Simple math, just checking if enough time has passed for the forage to "decay"
                 if ((currentTotalDays - spawnTotalDays) > lifespan)
                 {
-                    ModEntry.instance?.Monitor.Log($"Despawning {forage.Value.DisplayName} due to age.", ModEntry.instance.config.loggingLevel);
+                    ModEntry.instance.Monitor.Log($"Despawning {forage.Value.DisplayName} due to age.");
                     map.objects.Remove(forage.Key);
                     return true;
                 }
                 else
                 {
-                    ModEntry.instance?.Monitor.Log($"Skipping {forage.Value.DisplayName} as it has {(currentTotalDays - spawnTotalDays)} days left.", ModEntry.instance.config.loggingLevel);
+                    ModEntry.instance.Monitor.Log($"Skipping {forage.Value.DisplayName} as it has {(currentTotalDays - spawnTotalDays)} days left.");
                     return false;
                 }
             }
             // if ModData == null or ModData[ModEntry.ForageSpawnDateKey] == null
             else
             {
-                ModEntry.instance?.Monitor.Log($"Despawning {forage.Value.DisplayName} as it either has no ModData or spawn date.", ModEntry.instance.config.loggingLevel);
+                ModEntry.instance.Monitor.Log($"Despawning {forage.Value.DisplayName} as it either has no ModData or spawn date.");
                 map.objects.Remove(forage.Key);
                 return true;
             }
