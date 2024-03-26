@@ -110,10 +110,11 @@ namespace TimeToLive
             
             var matcher = new CodeMatcher(instructions, generator);
             // temp code dump
-            List<KeyValuePair<string, string?>> insns = new();
+            List<string> insns = new();
             foreach (CodeInstruction pair in matcher.InstructionEnumeration())
             {
-                insns.Add(new(pair.opcode.Name, pair.operand != null ? pair.operand.GetType() + ": " + pair.operand.ToString() : ""));
+                string operand = pair.operand != null ? pair.operand.GetType() + ": " + pair.operand.ToString() : "";
+                insns.Add(pair.opcode.Name + " " + operand);
             }
             ModEntry.instance.Monitor.Log(Newtonsoft.Json.JsonConvert.SerializeObject(insns));
 
@@ -188,7 +189,8 @@ namespace TimeToLive
             insns = new();
             foreach (CodeInstruction pair in matcher.InstructionEnumeration())
             {
-                insns.Add(new(pair.opcode.Name, pair.operand != null ? pair.operand.GetType() + ": " + pair.operand.ToString() : ""));
+                string operand = pair.operand != null ? pair.operand.GetType() + ": " + pair.operand.ToString() : "";
+                insns.Add(pair.opcode.Name + " " + operand);
             }
             ModEntry.instance.Monitor.Log(Newtonsoft.Json.JsonConvert.SerializeObject(insns));
 
@@ -202,13 +204,14 @@ namespace TimeToLive
             // we can store and retrieve custom data from here, it just needs to be serializable
             // in this case, we're using a simple int
             var objectModData = forage.Value.modData;
-            int lifespan = ModEntry.instance.config.lifespan != null ? ModEntry.instance.config.lifespan : 7;
+            int lifespan = ModEntry.instance.config.lifespan;
             if (objectModData != null && objectModData[ModEntry.ForageSpawnDateKey] != null)
             {
                 int currentTotalDays = WorldDate.Now().TotalDays;
                 int spawnTotalDays = int.Parse(objectModData[ModEntry.ForageSpawnDateKey]);
 
                 // Simple math, just checking if enough time has passed for the forage to "decay"
+                // variables could get rolled into the conditional but that's not legible
                 if ((currentTotalDays - spawnTotalDays) > lifespan)
                 {
                     ModEntry.instance.Monitor.Log($"Despawning {forage.Value.DisplayName} due to age.");
