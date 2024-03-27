@@ -102,6 +102,8 @@ namespace TimeToLive
         })]
         public static IEnumerable<CodeInstruction> DayUpdate_Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
         {
+            // transpiler results can be found here, output based off the dumps performed in this method
+            // https://gist.github.com/justastranger/54ee9abdfec688c94f5b5d49032a31e4
             ModEntry.instance.Monitor.Log("Patching GameLocation.DayUpdate");
             FieldInfo objectsField = AccessTools.Field(typeof(GameLocation), nameof(GameLocation.objects));
             FieldInfo numberOfSpawnedObjectsOnMapField = AccessTools.Field(typeof(GameLocation), nameof(GameLocation.numberOfSpawnedObjectsOnMap));
@@ -146,8 +148,10 @@ namespace TimeToLive
             // Insert our detour function, making use of the GameLocation inserted earlier
             // and the KeyValuePair that we salvaged from the Key retrieval
             // matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Call, CheckForageForRemovalMethod));
+            //      InvalidProgramException: Common Language Runtime detected an invalid program.
             // matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Callvirt, CheckForageForRemovalMethod));
-            matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Call, typeof(GameLocationPatch).GetMethod(nameof(GameLocationPatch.CheckForageForRemoval), BindingFlags.Static | BindingFlags.Public)));
+            //      MissingMethodException: Method not found: '?'.
+            matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Call, typeof(GameLocationPatch).GetMethod(nameof(CheckForageForRemoval))));
 
             // conditional decrement, skips if a Forage was not removed by previous instruction
             Label condLabel = generator.DefineLabel();
