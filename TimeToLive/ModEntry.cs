@@ -104,7 +104,7 @@ namespace TimeToLive
             // skip to ldloca_s
             matcher.Advance(3);
             // convert reference produced by ldloca.s to actual object of the desired type
-            matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Ldobj, typeof(KeyValuePair<Vector2, StardewValley.Object>)));
+            //matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Ldobj, typeof(KeyValuePair<Vector2, StardewValley.Object>)));
             // Remove the instructions that remove the Object from the set
             matcher.RemoveInstructions(3);
             // Insert our detour function, making use of the GameLocation inserted earlier
@@ -164,7 +164,7 @@ namespace TimeToLive
             ModEntry.instance.Monitor.Log("Emitting tag into log from IL code.", LogLevel.Error);
         }
 
-        public static bool CheckForageForRemoval(OverlaidDictionary objects, KeyValuePair<Vector2, StardewValley.Object> forage)
+        public static bool CheckForageForRemoval(OverlaidDictionary objects, ref KeyValuePair<Vector2, StardewValley.Object> forage)
         {
             // ModEntry.instance.Monitor.Log("CheckForageForRemoval: Detour reached.", LogLevel.Error);
 
@@ -173,6 +173,8 @@ namespace TimeToLive
 
             var objectModData = forage.Value.modData;
             int lifespan = ModEntry.instance.config.lifespan;
+
+            
             if (objectModData != null && forage.Value.modData.TryGetValue(ModEntry.ForageSpawnDateKey, out string forageSpawnDate))
             {
                 int currentTotalDays = WorldDate.Now().TotalDays;
@@ -180,10 +182,10 @@ namespace TimeToLive
 
                 // Simple math, just checking if enough time has passed for the forage to "decay"
                 // variables could get rolled into the conditional but that's not legible
-                if ((currentTotalDays - spawnTotalDays) > lifespan)
+                if ((currentTotalDays - spawnTotalDays) >= lifespan)
                 {
                     ModEntry.instance.Monitor.Log($"Despawning {forage.Value.DisplayName} due to age.", LogLevel.Trace);
-                    objects.Remove(forage.Key);
+                    forage.Value.Location.objects.Remove(forage.Key);
                     return true;
                 }
                 else
@@ -195,7 +197,7 @@ namespace TimeToLive
             else
             {
                 ModEntry.instance.Monitor.Log($"Despawning {forage.Value.DisplayName} as it either has no ModData or spawn date. It was most likely spawned before this mod was installed.", LogLevel.Trace);
-                objects.Remove(forage.Key);
+                forage.Value.Location.objects.Remove(forage.Key);
                 return true;
             }
         }
