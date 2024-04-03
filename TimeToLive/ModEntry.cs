@@ -38,7 +38,8 @@ namespace TimeToLive
             {
                 foreach (KeyValuePair<Vector2, StardewValley.Object> kvp in e.Added)
                 {
-                    if (kvp.Value.isForage() && kvp.Value.IsSpawnedObject)
+                    // IsSpawnedObject covers seasonal forage and shells on the beach
+                    if (kvp.Value.IsSpawnedObject)
                     {
                         kvp.Value.modData[ForageSpawnDateKey] = WorldDate.Now().TotalDays.ToString();
                         instance.Monitor.Log($"Assigned current date to spawned {kvp.Value.DisplayName}.", LogLevel.Trace);
