@@ -23,6 +23,7 @@ namespace TimeToLive
         public override void Entry(IModHelper helper)
         {
             i18n = helper.Translation;
+            config = Helper.ReadConfig<Config>();
             string startingMessage = i18n.Get("TimeToLive.start");
             Monitor.Log(startingMessage, LogLevel.Trace);
 
@@ -53,7 +54,6 @@ namespace TimeToLive
 
         public void OnLaunched(object? sender, GameLaunchedEventArgs e)
         {
-            config = Helper.ReadConfig<Config>();
             if (Helper.ModRegistry.IsLoaded("spacechase0.GenericModConfigMenu"))
             {
                 var api = Helper.ModRegistry.GetApi<IGenericModConfigMenuApi>("spacechase0.GenericModConfigMenu");
@@ -72,7 +72,7 @@ namespace TimeToLive
         [HarmonyPatch(typeof(GameLocation), nameof(GameLocation.DayUpdate), new Type[] { typeof(int) })]
         public static IEnumerable<CodeInstruction> DayUpdate_Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
         {
-            ModEntry.instance.Monitor.Log(ModEntry.i18n.Get("TimeToLive.debug.transpiler.start"), LogLevel.Trace);
+            ModEntry.instance.Monitor.Log(ModEntry.i18n.Get("TimeToLive.debug.transpiler.start"), ModEntry.instance.config.loggingLevel);
             FieldInfo objectsField = AccessTools.Field(typeof(GameLocation), nameof(GameLocation.objects));
             FieldInfo numberOfSpawnedObjectsOnMapField = AccessTools.Field(typeof(GameLocation), nameof(GameLocation.numberOfSpawnedObjectsOnMap));
             MethodInfo CheckForageForRemovalMethod = AccessTools.Method(typeof(GameLocationPatch), nameof(CheckForageForRemoval));
