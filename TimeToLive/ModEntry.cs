@@ -31,6 +31,7 @@ namespace TimeToLive
             harmony = new Harmony(ModManifest.UniqueID);
             harmony.PatchAll();
             helper.Events.World.ObjectListChanged += OnObjectListChanged;
+            helper.Events.GameLoop.GameLaunched += OnLaunched;
         }
 
         public void OnObjectListChanged(object? sender, ObjectListChangedEventArgs e)
