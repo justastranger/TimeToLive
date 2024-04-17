@@ -6,6 +6,7 @@ using System.Reflection.Emit;
 using System.Reflection;
 using Microsoft.Xna.Framework;
 using StardewValley.Network;
+using RadioactiveGeodes;
 
 namespace TimeToLive
 {
@@ -25,7 +26,6 @@ namespace TimeToLive
             string startingMessage = i18n.Get("TimeToLive.start");
             Monitor.Log(startingMessage, LogLevel.Trace);
 
-            config = helper.ReadConfig<Config>();
             instance = this;
             ForageSpawnDateKey = $"{ModManifest.UniqueID}/ForageSpawnDate";
             harmony = new Harmony(ModManifest.UniqueID);
@@ -35,19 +35,31 @@ namespace TimeToLive
 
         public void OnObjectListChanged(object? sender, ObjectListChangedEventArgs e)
         {
-            if (e.Added != null)
+            if (e.Added == null)
             {
-                foreach (KeyValuePair<Vector2, StardewValley.Object> kvp in e.Added)
+                return;
+            }
+            foreach (KeyValuePair<Vector2, StardewValley.Object> kvp in e.Added)
+            {
+                // IsSpawnedObject covers seasonal forage and shells on the beach
+                if (kvp.Value.IsSpawnedObject)
                 {
-                    // IsSpawnedObject covers seasonal forage and shells on the beach
-                    if (kvp.Value.IsSpawnedObject)
-                    {
-                        kvp.Value.modData[ForageSpawnDateKey] = WorldDate.Now().TotalDays.ToString();
-                        instance.Monitor.Log(i18n.Get("TimeToLive.debug.event.dated", new { kvp.Value.DisplayName }), config.loggingLevel);
-                    }
+                    kvp.Value.modData[ForageSpawnDateKey] = WorldDate.Now().TotalDays.ToString();
+                    instance.Monitor.Log(i18n.Get("TimeToLive.debug.event.dated", new { kvp.Value.DisplayName }), config.loggingLevel);
                 }
             }
+        }
 
+        public void OnLaunched(object? sender, GameLaunchedEventArgs e)
+        {
+            config = Helper.ReadConfig<Config>();
+            if (Helper.ModRegistry.IsLoaded("spacechase0.GenericModConfigMenu"))
+            {
+                var api = Helper.ModRegistry.GetApi<IGenericModConfigMenuApi>("spacechase0.GenericModConfigMenu");
+
+                api?.Register(ModManifest, () => config = new Config(), () => Helper.WriteConfig(config));
+                api?.AddNumberOption(ModManifest, () => config.lifespan, (int val) => config.lifespan = val, () => i18n.Get("TimeToLive.config.lifespan.name"), () => i18n.Get("TimeToLive.config.lifespan.description"), 1, 28);
+            }
         }
     }
 

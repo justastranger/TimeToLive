@@ -6,5 +6,7 @@
     "TimeToLive.debug.detour.age": "Despawning {{DisplayName}} due to age.",
     "TimeToLive.debug.detour.skip": "Skipping {{DisplayName}} as it has {{Time}} days left.",
     "TimeToLive.debug.detour.undated": "Despawning {{DisplayName}} as it either has no ModData or no spawn date. It was most likely spawned before this mod was installed.",
-    "TimeToLive.debug.event.dated": "Assigned current date to spawned {{DisplayName}}."
+    "TimeToLive.debug.event.dated": "Assigned current date to spawned {{DisplayName}}.",
+    "TimeToLive.config.lifespan.name": "Forage Lifespan",
+    "TimeToLive.config.lifespan.description": "How long after a piece of forage spawns until it despawns."
 }
