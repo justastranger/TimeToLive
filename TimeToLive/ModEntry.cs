@@ -12,7 +12,7 @@ namespace TimeToLive
     public class ModEntry : Mod
     {
         internal Config config;
-        internal ITranslationHelper i18n => Helper.Translation;
+        internal static ITranslationHelper i18n;
 
         internal static ModEntry instance;
 
@@ -21,12 +21,13 @@ namespace TimeToLive
 
         public override void Entry(IModHelper helper)
         {
+            i18n = helper.Translation;
             string startingMessage = i18n.Get("TimeToLive.start");
             Monitor.Log(startingMessage, LogLevel.Trace);
 
             config = helper.ReadConfig<Config>();
             instance = this;
-            ForageSpawnDateKey = $"{instance.ModManifest.UniqueID}/ForageSpawnDate";
+            ForageSpawnDateKey = $"{ModManifest.UniqueID}/ForageSpawnDate";
             harmony = new Harmony(ModManifest.UniqueID);
             harmony.PatchAll();
             helper.Events.World.ObjectListChanged += OnObjectListChanged;
@@ -42,7 +43,7 @@ namespace TimeToLive
                     if (kvp.Value.IsSpawnedObject)
                     {
                         kvp.Value.modData[ForageSpawnDateKey] = WorldDate.Now().TotalDays.ToString();
-                        instance.Monitor.Log($"Assigned current date to spawned {kvp.Value.DisplayName}.", LogLevel.Trace);
+                        instance.Monitor.Log(i18n.Get("TimeToLive.debug.event.dated", new { kvp.Value.DisplayName }), config.loggingLevel);
                     }
                 }
             }
@@ -58,7 +59,7 @@ namespace TimeToLive
         [HarmonyPatch(typeof(GameLocation), nameof(GameLocation.DayUpdate), new Type[] { typeof(int) })]
         public static IEnumerable<CodeInstruction> DayUpdate_Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
         {
-            ModEntry.instance.Monitor.Log("Patching GameLocation.DayUpdate", LogLevel.Trace);
+            ModEntry.instance.Monitor.Log(ModEntry.i18n.Get("TimeToLive.debug.transpiler.start"), LogLevel.Trace);
             FieldInfo objectsField = AccessTools.Field(typeof(GameLocation), nameof(GameLocation.objects));
             FieldInfo numberOfSpawnedObjectsOnMapField = AccessTools.Field(typeof(GameLocation), nameof(GameLocation.numberOfSpawnedObjectsOnMap));
             MethodInfo CheckForageForRemovalMethod = AccessTools.Method(typeof(GameLocationPatch), nameof(CheckForageForRemoval));
@@ -120,11 +121,11 @@ namespace TimeToLive
 
             if (matcher.IsInvalid)
             {
-                ModEntry.instance.Monitor.Log("Patching GameLocation.spawnObjects failed.", LogLevel.Error);
+                ModEntry.instance.Monitor.Log(ModEntry.i18n.Get("TimeToLive.debug.transpiler.failed"), ModEntry.instance.config.loggingLevel);
                 return instructions;
             }
             // all done!
-            ModEntry.instance.Monitor.Log("Patched GameLocation.DayUpdate.", LogLevel.Trace);
+            ModEntry.instance.Monitor.Log(ModEntry.i18n.Get("TimeToLive.debug.transpiler.success"), ModEntry.instance.config.loggingLevel);
             return matcher.InstructionEnumeration();
         }
 
@@ -145,19 +146,19 @@ namespace TimeToLive
                 // variables could get rolled into the conditional but that's not legible
                 if ((currentTotalDays - spawnTotalDays) >= lifespan)
                 {
-                    ModEntry.instance.Monitor.Log($"Despawning {forage.Value.DisplayName} due to age.", LogLevel.Trace);
+                    ModEntry.instance.Monitor.Log(ModEntry.i18n.Get("TimeToLive.debug.detour.age", new { forage.Value.DisplayName }), ModEntry.instance.config.loggingLevel);
                     forage.Value.Location.objects.Remove(forage.Key);
                     return true;
                 }
                 else
                 {
-                    ModEntry.instance.Monitor.Log($"Skipping {forage.Value.DisplayName} as it has {(currentTotalDays - spawnTotalDays)} days left.", LogLevel.Trace);
+                    ModEntry.instance.Monitor.Log(ModEntry.i18n.Get("TimeToLive.debug.detour.skip", new { forage.Value.DisplayName, Time = (currentTotalDays - spawnTotalDays) }), ModEntry.instance.config.loggingLevel);
                     return false;
                 }
             }
             else
             {
-                ModEntry.instance.Monitor.Log($"Despawning {forage.Value.DisplayName} as it either has no ModData or spawn date. It was most likely spawned before this mod was installed.", LogLevel.Trace);
+                ModEntry.instance.Monitor.Log(ModEntry.i18n.Get("TimeToLive.debug.detour.undated", new { forage.Value.DisplayName }), ModEntry.instance.config.loggingLevel);
                 forage.Value.Location.objects.Remove(forage.Key);
                 return true;
             }
